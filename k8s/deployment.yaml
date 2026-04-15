@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gemini-chatbot
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gemini-chatbot
+  template:
+    metadata:
+      labels:
+        app: gemini-chatbot
+    spec:
+      containers:
+      - name: chatbot
+        image: prakharvs/gemini-chatbot
+        ports:
+        - containerPort: 3000
+        env:
+        - name: GEMINI_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: gemini-secret
+              key: GEMINI_API_KEY
+        - name: MONGO_URI
+          valueFrom:
+            secretKeyRef:
+              name: gemini-secret
+              key: MONGO_URI

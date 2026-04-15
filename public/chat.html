@@ -33,25 +33,21 @@
   <script>
     // 🔥 Typing effect (word-by-word like ChatGPT)
     function typeText(element, text, speed = 20) {
-      const chars = Array.from(text);
-      let i = 0;
+    const html = marked.parse(text);   // convert once
+    let i = 0;
 
-      element.innerText ="";
+    element.innerHTML = "";
 
-      function typing() {
-        if (i < chars.length) {
-          element.innerText += chars[i]; // ✅ plain text first
-          i++;
-          setTimeout(typing, speed);
-        } else {
-          // ✅ convert to markdown AFTER typing completes
-          element.innerHTML = marked.parse(text);
-        }
+    function typing() {
+      if (i < html.length) {
+        element.innerHTML = html.slice(0, i); // type formatted HTML
+        i++;
+        setTimeout(typing, speed);
       }
-
-      element.innerText = "";
-      typing();
     }
+
+    typing();
+  }
 
     // 🚀 Send message
     async function sendMessage() {

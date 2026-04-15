@@ -9,23 +9,46 @@ require('dotenv').config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-// ✅ Middleware
+// =======================
+// 🔐 ENV CHECK (IMPORTANT)
+// =======================
+if (!process.env.MONGO_URI || !process.env.GEMINI_API_KEY) {
+  console.error("❌ Missing environment variables");
+  process.exit(1);
+}
+
+// =======================
+// ✅ MIDDLEWARE
+// =======================
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 
 app.use(session({
-  secret: 'your_secret_key',
+  secret: process.env.SESSION_SECRET || "fallback_secret",
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false }
+  cookie: {
+    secure: false,   // set true if HTTPS
+    httpOnly: true
+  }
 }));
 
-// ✅ MongoDB
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB Connected"))
-  .catch(err => console.error("❌ MongoDB Error:", err));
+// =======================
+// 🗄️ MONGODB CONNECTION
+// =======================
+mongoose.connect(process.env.MONGO_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log("✅ MongoDB Connected"))
+.catch(err => {
+  console.error("❌ MongoDB Error:", err);
+  process.exit(1);
+});
 
-// ✅ Gemini API
+// =======================
+// 🤖 GEMINI API
+// =======================
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_API_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent";
@@ -33,7 +56,6 @@ const GEMINI_API_URL =
 // =======================
 // 📦 MODELS
 // =======================
-
 const User = mongoose.model('User', new mongoose.Schema({
   username: { type: String, unique: true },
   email: { type: String, unique: true },
@@ -50,7 +72,6 @@ const Chat = mongoose.model('Chat', new mongoose.Schema({
 // =======================
 // 🔐 AUTH ROUTES
 // =======================
-
 app.post('/register', async (req, res) => {
   const { username, email, password } = req.body;
 
@@ -110,7 +131,6 @@ app.get('/check-auth', (req, res) => {
 // =======================
 // 💬 CHAT WITH MEMORY
 // =======================
-
 app.post('/chat', async (req, res) => {
   const user = req.session.user;
   if (!user) return res.status(401).json({ message: 'Unauthorized' });
@@ -120,76 +140,59 @@ app.post('/chat', async (req, res) => {
 
   const trimmedMessage = message.slice(0, 500);
 
-  // 🔥 Fetch last 10 messages (memory)
-  const history = await Chat.find({ userId: user.id })
-    .sort({ timestamp: 1 })
-    .limit(10);
+  try {
+    // Fetch last 10 chats
+    const history = await Chat.find({ userId: user.id })
+      .sort({ timestamp: 1 })
+      .limit(10);
 
-  // 🔥 Convert to Gemini format
-  const messages = [];
+    const messages = [];
 
-  history.forEach(chat => {
+    history.forEach(chat => {
+      messages.push({
+        role: "user",
+        parts: [{ text: chat.userMessage }]
+      });
+      messages.push({
+        role: "model",
+        parts: [{ text: chat.botResponse }]
+      });
+    });
+
     messages.push({
       role: "user",
-      parts: [{ text: chat.userMessage }]
+      parts: [{ text: trimmedMessage }]
     });
 
-    messages.push({
-      role: "model",
-      parts: [{ text: chat.botResponse }]
+    // Gemini API call
+    const response = await axios.post(
+      `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
+      { contents: messages },
+      { timeout: 8000 }
+    );
+
+    const botReply =
+      response.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "🤖 No response";
+
+    res.json({ reply: botReply });
+
+    // Save chat
+    await Chat.create({
+      userId: user.id,
+      userMessage: trimmedMessage,
+      botResponse: botReply
     });
-  });
 
-  // Add current message
-  messages.push({
-    role: "user",
-    parts: [{ text: trimmedMessage }]
-  });
-
-  // 🔁 Gemini call with retry
-  async function callGemini(msgs, retries = 2) {
-    try {
-      const response = await axios.post(
-        `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
-        { contents: msgs },
-        { timeout: 8000 }
-      );
-
-      return response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    } catch (err) {
-      if (err.response?.status === 503 && retries > 0) {
-        console.log("⏳ Retry...");
-        await new Promise(res => setTimeout(res, 2000));
-        return callGemini(msgs, retries - 1);
-      }
-      throw err;
-    }
+  } catch (err) {
+    console.error("❌ Gemini Error:", err.response?.data || err.message);
+    res.json({ reply: "🤖 Server busy. Try again." });
   }
-
-  let botReply;
-
-  try {
-    botReply = await callGemini(messages); // ✅ FIXED (passing messages)
-  } catch(err) {
-    console.error("❌ REAL ERROR:", err.response?.data || err.message);
-    botReply = "🤖 Server busy. Try again.";
-  }
-
-  res.json({ reply: botReply });
-
-  // Save in background
-  Chat.create({
-    userId: user.id,
-    userMessage: trimmedMessage,
-    botResponse: botReply
-  });
 });
 
 // =======================
 // 📜 HISTORY
 // =======================
-
 app.get('/history', async (req, res) => {
   const user = req.session.user;
   if (!user) return res.status(401).json({ message: 'Unauthorized' });
@@ -212,7 +215,6 @@ app.delete('/delete-history', async (req, res) => {
 // =======================
 // 🚀 START SERVER
 // =======================
-
 app.listen(port, () => {
   console.log(`✅ Server running at http://localhost:${port}`);
 });
