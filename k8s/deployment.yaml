@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: gemini-chatbot
 spec:
-  replicas: 2
+  replicas: 1   # ⚠️ important
   selector:
     matchLabels:
       app: gemini-chatbot
@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
       - name: chatbot
-        image: prakharvs/gemini-chatbot
+        image: prakharvs/gemini-chatbot:latest
         ports:
         - containerPort: 3000
         env:
@@ -28,3 +28,8 @@ spec:
             secretKeyRef:
               name: gemini-secret
               key: MONGO_URI
+        - name: SESSION_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: gemini-secret
+              key: SESSION_SECRET
