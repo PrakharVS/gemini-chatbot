@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: gemini-chatbot
 spec:
-  replicas: 1   # ⚠️ important
+  replicas: 1
   selector:
     matchLabels:
       app: gemini-chatbot
@@ -33,3 +33,4 @@ spec:
             secretKeyRef:
               name: gemini-secret
               key: SESSION_SECRET
+              
