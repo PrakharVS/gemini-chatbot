@@ -16,7 +16,7 @@ spec:
       - name: chatbot
         image: prakharvs/gemini-chatbot:latest
         ports:
-        - containerPort: 3000
+        - containerPort: 3009
         env:
         - name: GEMINI_API_KEY
           valueFrom:
